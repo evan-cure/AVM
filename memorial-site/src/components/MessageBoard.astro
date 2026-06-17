@@ -1,0 +1,91 @@
+---
+// src/components/MessageBoard.astro
+// Usage: <MessageBoard /> in any page
+
+const SUPABASE_URL = import.meta.env.PUBLIC_SUPABASE_URL;
+const PUBLIC_MESSAGES_URL = `${SUPABASE_URL}/functions/v1/public-messages`;
+---
+
+<!-- ── Messages feed ──────────────────────────────────────── -->
+<section class="messages-section">
+  <div class="messages-inner">
+    <header class="messages-header">
+      <p class="eyebrow">Memories shared</p>
+      <h2 class="section-title">Messages of remembrance</h2>
+    </header>
+
+    <div class="messages-grid" id="messages-grid">
+      <p class="no-messages">Loading messages...</p>
+    </div>
+  </div>
+</section>
+
+<script define:vars={{ PUBLIC_MESSAGES_URL }}>
+  const grid = document.getElementById('messages-grid');
+
+  function escapeHtml(value = '') {
+    return String(value)
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#39;');
+  }
+
+  function formatDate(value) {
+    return new Date(value).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+  }
+
+  function renderMedia(message) {
+    if (!message.signedUrl) return '';
+
+    const signedUrl = escapeHtml(message.signedUrl);
+    const name = escapeHtml(message.name);
+
+    if (String(message.media_type || '').startsWith('video')) {
+      return `
+        <div class="message-media">
+          <video src="${signedUrl}" controls playsinline></video>
+        </div>
+      `;
+    }
+
+    return `
+      <div class="message-media">
+        <img src="${signedUrl}" alt="Memory shared by ${name}" loading="lazy" />
+      </div>
+    `;
+  }
+
+  function renderMessages(messages) {
+    if (!messages.length) {
+      grid.innerHTML = '<p class="no-messages">No messages yet. Be the first to share a memory.</p>';
+      return;
+    }
+
+    grid.innerHTML = messages.map((message) => `
+      <article class="message-card">
+        ${renderMedia(message)}
+        <div class="message-content">
+          <p class="message-name">${escapeHtml(message.name)}</p>
+          <p class="message-body">${escapeHtml(message.body || '')}</p>
+          <p class="message-date">${escapeHtml(formatDate(message.created_at))}</p>
+        </div>
+      </article>
+    `).join('');
+  }
+
+  fetch(PUBLIC_MESSAGES_URL)
+    .then(async (response) => {
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Could not load messages.');
+      renderMessages(data.messages || []);
+    })
+    .catch((err) => {
+      grid.innerHTML = `<p class="no-messages">${escapeHtml(err.message || 'Could not load messages.')}</p>`;
+    });
+</script>

@@ -1,0 +1,408 @@
+:root {
+	--color-border: #d8d8d8;
+	--color-muted: #666;
+	--color-error: #b00020;
+	--color-focus: #1f5eff;
+	--page-width: 920px;
+}
+
+* {
+	box-sizing: border-box;
+}
+
+body {
+	margin: 0;
+	color: #222;
+	background: #fff;
+	font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+	line-height: 1.5;
+}
+
+main {
+	width: min(var(--page-width), calc(100% - 2rem));
+	margin: 0 auto;
+	padding: 2rem 0 4rem;
+}
+
+a {
+	color: inherit;
+}
+
+p,
+h1,
+h2 {
+	margin-top: 0;
+}
+
+button,
+input,
+textarea {
+	font: inherit;
+}
+
+.site-header {
+	border-bottom: 1px solid var(--color-border);
+}
+
+.site-nav {
+	width: min(var(--page-width), calc(100% - 2rem));
+	margin: 0 auto;
+	display: flex;
+	gap: 1rem;
+	padding: 1rem 0;
+}
+
+.site-nav a {
+	color: #222;
+	text-decoration: none;
+}
+
+.site-nav a:hover {
+	text-decoration: underline;
+}
+
+.eyebrow {
+	margin-bottom: 0.25rem;
+	color: var(--color-muted);
+	font-size: 0.875rem;
+	text-transform: uppercase;
+}
+
+.section-title {
+	margin-bottom: 0.5rem;
+	font-size: 2rem;
+	line-height: 1.2;
+}
+
+.field-error {
+	color: var(--color-error);
+	font-size: 0.875rem;
+}
+
+.submit-section,
+.messages-section,
+.admin-section {
+	padding: 1rem 0;
+}
+
+.submit-inner {
+	max-width: 620px;
+}
+
+.submit-header,
+.messages-header,
+.admin-header {
+	margin-bottom: 1.5rem;
+}
+
+.submit-sub,
+.admin-sub,
+.file-hint,
+.char-count,
+.message-date,
+.no-messages {
+	color: var(--color-muted);
+}
+
+.char-count.is-warning {
+	color: var(--color-error);
+}
+
+.memorial-form,
+.field-group,
+.captcha-row {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
+}
+
+.memorial-form {
+	gap: 1rem;
+}
+
+.field-label {
+	font-weight: 600;
+}
+
+.optional-tag {
+	color: var(--color-muted);
+	font-weight: 400;
+}
+
+.field-input {
+	width: 100%;
+	border: 1px solid var(--color-border);
+	border-radius: 4px;
+	padding: 0.75rem;
+	color: #222;
+	background: #fff;
+}
+
+.field-input:focus {
+	border-color: var(--color-focus);
+	outline: 2px solid color-mix(in srgb, var(--color-focus) 20%, transparent);
+	outline-offset: 1px;
+}
+
+.field-textarea {
+	min-height: 9rem;
+	resize: vertical;
+}
+
+.field-footer {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 1rem;
+}
+
+.file-drop {
+	position: relative;
+	display: block;
+	border: 1px dashed var(--color-border);
+	border-radius: 4px;
+	padding: 1rem;
+	cursor: pointer;
+}
+
+.file-drop:hover,
+.file-drop.drag-over {
+	border-color: var(--color-focus);
+}
+
+#media-input {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	opacity: 0;
+	cursor: pointer;
+}
+
+.file-drop-inner,
+.file-selected {
+	display: flex;
+	gap: 0.5rem;
+}
+
+.file-drop-inner {
+	flex-direction: column;
+	pointer-events: none;
+}
+
+.file-selected {
+	align-items: center;
+	pointer-events: none;
+}
+
+.file-selected[hidden],
+.btn-spinner[hidden],
+.success-message[hidden],
+.error-banner[hidden] {
+	display: none;
+}
+
+.file-name {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.file-remove {
+	position: relative;
+	z-index: 2;
+	border: 0;
+	background: transparent;
+	cursor: pointer;
+	pointer-events: auto;
+}
+
+.submit-btn {
+	width: 100%;
+	border: 1px solid #222;
+	border-radius: 4px;
+	padding: 0.75rem 1rem;
+	color: #fff;
+	background: #222;
+	cursor: pointer;
+}
+
+.secondary-btn,
+.danger-btn {
+	border: 1px solid #222;
+	border-radius: 4px;
+	padding: 0.6rem 0.85rem;
+	background: #fff;
+	color: #222;
+	cursor: pointer;
+}
+
+.danger-btn {
+	border-color: var(--color-error);
+	color: var(--color-error);
+}
+
+.submit-btn:disabled,
+.secondary-btn:disabled,
+.danger-btn:disabled {
+	cursor: not-allowed;
+	opacity: 0.6;
+}
+
+.btn-spinner svg {
+	animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+.success-message {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
+	border: 1px solid var(--color-border);
+	border-radius: 4px;
+	padding: 1rem;
+}
+
+.success-title {
+	margin-bottom: 0;
+	font-weight: 700;
+}
+
+.error-banner {
+	margin-top: 1rem;
+	border: 1px solid var(--color-error);
+	border-radius: 4px;
+	padding: 0.75rem;
+	color: var(--color-error);
+}
+
+.messages-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(min(100%, 18rem), 1fr));
+	gap: 1rem;
+}
+
+.message-card {
+	border: 1px solid var(--color-border);
+	border-radius: 4px;
+	overflow: hidden;
+}
+
+.message-media {
+	background: #f3f3f3;
+}
+
+.message-media img,
+.message-media video {
+	display: block;
+	width: 100%;
+	height: auto;
+}
+
+.message-content {
+	padding: 1rem;
+}
+
+.message-name {
+	font-weight: 700;
+}
+
+.message-body {
+	white-space: pre-wrap;
+}
+
+.admin-auth {
+	margin-bottom: 1rem;
+}
+
+.admin-tabs {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.5rem;
+	margin-bottom: 1rem;
+}
+
+.admin-tabs .is-active {
+	background: #222;
+	color: #fff;
+}
+
+.admin-auth-row {
+	display: grid;
+	grid-template-columns: 1fr auto;
+	gap: 0.75rem;
+	align-items: stretch;
+}
+
+.admin-status {
+	min-height: 1.5rem;
+	margin-bottom: 1rem;
+	color: var(--color-muted);
+}
+
+.admin-status[data-tone="error"] {
+	color: var(--color-error);
+}
+
+.admin-list {
+	display: grid;
+	gap: 1rem;
+}
+
+.admin-card {
+	display: grid;
+	grid-template-columns: minmax(12rem, 18rem) 1fr;
+	gap: 1rem;
+	border: 1px solid var(--color-border);
+	border-radius: 4px;
+	padding: 1rem;
+}
+
+.admin-card-body {
+	min-width: 0;
+}
+
+.admin-card-meta {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.5rem 1rem;
+	justify-content: space-between;
+	margin-bottom: 0.75rem;
+	color: var(--color-muted);
+}
+
+.admin-card-meta strong {
+	color: #222;
+}
+
+.admin-media {
+	display: block;
+	width: 100%;
+	max-height: 18rem;
+	object-fit: contain;
+	background: #f3f3f3;
+}
+
+.admin-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.5rem;
+	margin-top: 1rem;
+}
+
+@media (max-width: 480px) {
+	.site-nav {
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+
+	.admin-auth-row,
+	.admin-card {
+		grid-template-columns: 1fr;
+	}
+}

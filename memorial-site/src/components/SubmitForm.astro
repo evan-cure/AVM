@@ -1,0 +1,275 @@
+---
+// src/components/SubmitForm.astro
+// Usage: <SubmitForm /> in any page
+
+const SUPABASE_URL      = import.meta.env.PUBLIC_SUPABASE_URL;
+const SUPABASE_ANON_KEY = import.meta.env.PUBLIC_SUPABASE_ANON_KEY;
+const FUNCTION_URL      = `${SUPABASE_URL}/functions/v1/submit-message`;
+const HCAPTCHA_SITE_KEY = import.meta.env.PUBLIC_HCAPTCHA_SITE_KEY;
+---
+
+<!-- ── Submit form ─────────────────────────────────────────── -->
+<section class="submit-section">
+  <div class="submit-inner">
+    <header class="submit-header">
+      <p class="eyebrow">Leave a memory</p>
+      <h2 class="section-title">Share a message</h2>
+      <p class="submit-sub">Your message will be reviewed before appearing on this page.</p>
+    </header>
+
+    <form id="memorial-form" class="memorial-form" novalidate>
+      <div class="field-group">
+        <label class="field-label" for="visitorName">Your name</label>
+        <input
+          class="field-input"
+          type="text"
+          id="visitorName"
+          name="visitorName"
+          placeholder="e.g. Sarah Thompson"
+          maxlength="100"
+          autocomplete="name"
+          required
+        />
+        <span class="field-error" id="name-error" aria-live="polite" hidden></span>
+      </div>
+
+      <div class="field-group">
+        <label class="field-label" for="body">Your message</label>
+        <textarea
+          class="field-input field-textarea"
+          id="body"
+          name="body"
+          placeholder="Share a memory, a story, or a few words…"
+          maxlength="2000"
+          rows="5"
+          required
+        ></textarea>
+        <div class="field-footer">
+          <span class="field-error" id="body-error" aria-live="polite" hidden></span>
+          <span class="char-count" id="char-count">0 / 2000</span>
+        </div>
+      </div>
+
+      <div class="field-group">
+        <label class="field-label">
+          Media <span class="optional-tag">optional</span>
+        </label>
+        <label class="file-drop" id="file-drop" for="media-input">
+          <div class="file-drop-inner" id="drop-inner">
+            <span class="file-icon">&#9654;</span>
+            <span class="file-prompt">Drag an image or video here or <u>browse</u></span>
+            <span class="file-hint">MP4, JPEG, PNG, WebP · max 100 MB</span>
+          </div>
+          <div class="file-selected" id="file-selected" hidden>
+            <span class="file-icon-sm">&#9654;</span>
+            <span class="file-name" id="file-name"></span>
+            <button type="button" class="file-remove" id="file-remove" aria-label="Remove file">
+              &#10005;
+            </button>
+          </div>
+          <input
+            type="file"
+            id="media-input"
+            name="media"
+            accept="image/jpeg,image/png,image/webp,image/heic,video/mp4"
+          />
+        </label>
+        <span class="field-error" id="media-error" aria-live="polite" hidden></span>
+      </div>
+
+      <div class="captcha-row">
+        <div class="h-captcha" data-sitekey={HCAPTCHA_SITE_KEY}></div>
+        <span class="field-error" id="captcha-error" aria-live="polite" hidden></span>
+      </div>
+
+      <button type="submit" class="submit-btn" id="submit-btn">
+        <span class="btn-label">Send message</span>
+        <span class="btn-spinner" id="btn-spinner" aria-hidden="true" hidden>
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="2"
+                    stroke-dasharray="28" stroke-dashoffset="10" stroke-linecap="round"/>
+          </svg>
+        </span>
+      </button>
+    </form>
+
+    <div class="success-message" id="success-msg" hidden role="status">
+      <div class="success-icon">&#10003;</div>
+      <p class="success-title">Thank you</p>
+      <p class="success-body">Your message has been received and will appear here once reviewed.</p>
+    </div>
+
+    <div class="error-banner" id="error-banner" hidden role="alert"></div>
+  </div>
+</section>
+
+<script src="https://js.hcaptcha.com/1/api.js" async defer></script>
+
+<script define:vars={{ FUNCTION_URL, SUPABASE_URL, SUPABASE_ANON_KEY }}>
+  // ── Constants ──────────────────────────────────────────────
+  const MAX_IMAGE = 10  * 1024 * 1024;  // 10 MB
+  const MAX_VIDEO = 100 * 1024 * 1024;  // 100 MB
+  const ACCEPTED_TYPES = new Set([
+    'image/jpeg', 'image/png', 'image/webp', 'image/heic', 'video/mp4'
+  ]);
+
+  // ── DOM refs ───────────────────────────────────────────────
+  const form        = document.getElementById('memorial-form');
+  const submitBtn   = document.getElementById('submit-btn');
+  const btnLabel    = submitBtn.querySelector('.btn-label');
+  const btnSpinner  = document.getElementById('btn-spinner');
+  const successMsg  = document.getElementById('success-msg');
+  const errorBanner = document.getElementById('error-banner');
+  const charCount   = document.getElementById('char-count');
+  const bodyField   = document.getElementById('body');
+  const mediaInput  = document.getElementById('media-input');
+  const dropInner   = document.getElementById('drop-inner');
+  const fileSelected = document.getElementById('file-selected');
+  const fileName    = document.getElementById('file-name');
+  const fileRemove  = document.getElementById('file-remove');
+  const fileDrop    = document.getElementById('file-drop');
+
+  // ── Field-error helpers ────────────────────────────────────
+  const showError = (id, msg) => {
+    const el = document.getElementById(id);
+    el.textContent = msg;
+    el.hidden = false;
+  };
+  const clearError = (id) => {
+    const el = document.getElementById(id);
+    el.textContent = '';
+    el.hidden = true;
+  };
+
+  // ── Character counter ──────────────────────────────────────
+  bodyField.addEventListener('input', () => {
+    const len = bodyField.value.length;
+    charCount.textContent = `${len} / 2000`;
+    charCount.classList.toggle('is-warning', len > 1800);
+  });
+
+  // ── File selection ─────────────────────────────────────────
+  function applyFile(file) {
+    if (!ACCEPTED_TYPES.has(file.type)) {
+      showError('media-error', 'Please upload an MP4 video or image file (JPEG, PNG, WebP).');
+      mediaInput.value = '';
+      return;
+    }
+    const isVideo = file.type === 'video/mp4';
+    const limit   = isVideo ? MAX_VIDEO : MAX_IMAGE;
+    const label   = isVideo ? '100 MB'  : '10 MB';
+    if (file.size > limit) {
+      showError('media-error', `${isVideo ? 'Videos' : 'Photos'} must be under ${label}.`);
+      mediaInput.value = '';
+      return;
+    }
+    clearError('media-error');
+    fileName.textContent       = file.name;
+    dropInner.hidden           = true;
+    fileSelected.hidden        = false;
+  }
+
+  function clearFile() {
+    mediaInput.value           = '';
+    dropInner.hidden           = false;
+    fileSelected.hidden        = true;
+    clearError('media-error');
+  }
+
+  mediaInput.addEventListener('change', () => mediaInput.files[0] && applyFile(mediaInput.files[0]));
+
+  fileRemove.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); clearFile(); });
+
+  fileDrop.addEventListener('dragover',  (e) => { e.preventDefault(); fileDrop.classList.add('drag-over'); });
+  fileDrop.addEventListener('dragleave', ()  => fileDrop.classList.remove('drag-over'));
+  fileDrop.addEventListener('drop', (e) => {
+    e.preventDefault();
+    fileDrop.classList.remove('drag-over');
+    const file = e.dataTransfer.files[0];
+    if (!file) return;
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    mediaInput.files = dt.files;
+    applyFile(file);
+  });
+
+  // ── Validation ─────────────────────────────────────────────
+  function validateForm() {
+    ['name-error', 'body-error', 'captcha-error'].forEach(clearError);
+    let valid = true;
+
+    const name  = document.getElementById('visitorName').value.trim();
+    const body  = bodyField.value.trim();
+    const token = typeof hcaptcha !== 'undefined' ? hcaptcha.getResponse() : '';
+
+    if (!name)          { showError('name-error',    'Please enter your name.');                    valid = false; }
+    if (!body)          { showError('body-error',    'Please write a message.');                    valid = false; }
+    else if (body.length < 10) { showError('body-error', 'Message must be at least 10 characters.'); valid = false; }
+    if (!token)         { showError('captcha-error', 'Please complete the captcha.');               valid = false; }
+
+    return valid ? { name, body, token } : null;
+  }
+
+  // ── Media upload ───────────────────────────────────────────
+  async function uploadMedia(file) {
+    const { createClient } = await import('https://esm.sh/@supabase/supabase-js');
+    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    const extension = file.name.split('.').pop()?.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() || 'bin';
+    const path      = `media/${crypto.randomUUID()}.${extension}`;
+
+    const { data, error } = await supabase.storage
+      .from('memorial-media')
+      .upload(path, file);
+
+    if (error) throw new Error(`Upload failed: ${error.message}`);
+
+    return {
+      mediaUrl:  data.path,
+      mediaType: file.type.startsWith('video') ? 'video' : 'image',
+    };
+  }
+
+  // ── Submit message ─────────────────────────────────────────
+  async function submitMessage(payload) {
+    const res = await fetch(FUNCTION_URL, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Submission failed (${res.status}): ${text}`);
+    }
+  }
+
+  // ── Form submit handler ────────────────────────────────────
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    errorBanner.hidden = true;
+
+    const fields = validateForm();
+    if (!fields) return;
+
+    submitBtn.disabled    = true;
+    btnLabel.textContent  = 'Sending…';
+    btnSpinner.hidden = false;
+
+    try {
+      const file      = mediaInput.files[0];
+      const mediaData = file ? await uploadMedia(file) : {};
+
+      await submitMessage({ ...fields, ...mediaData });
+
+      form.hidden       = true;
+      successMsg.hidden = false;
+    } catch (err) {
+      errorBanner.textContent  = err.message || 'Something went wrong — please try again.';
+      errorBanner.hidden = false;
+      submitBtn.disabled       = false;
+      btnLabel.textContent     = 'Send message';
+      btnSpinner.hidden        = true;
+      if (typeof hcaptcha !== 'undefined') hcaptcha.reset();
+    }
+  });
+</script>

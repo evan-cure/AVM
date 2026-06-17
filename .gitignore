@@ -1,0 +1,13 @@
+.env
+.env.*
+!.env.example
+
+memorial-site/.env
+memorial-site/.env.*
+!memorial-site/.env.example
+
+node_modules/
+dist/
+.astro/
+
+supabase/.temp/

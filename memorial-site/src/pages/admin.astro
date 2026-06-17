@@ -1,0 +1,193 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+
+const SUPABASE_URL = import.meta.env.PUBLIC_SUPABASE_URL;
+const ADMIN_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/admin-messages`;
+---
+
+<BaseLayout title="Admin Moderation">
+  <section class="admin-section">
+    <header class="admin-header">
+      <p class="eyebrow">Admin</p>
+      <h2 class="section-title">Pending submissions</h2>
+      <p class="admin-sub">Review submitted messages and media before they appear on the public board.</p>
+    </header>
+
+    <div class="admin-tabs" role="tablist" aria-label="Submission status">
+      <button class="secondary-btn is-active" type="button" data-status-filter="pending">Pending</button>
+      <button class="secondary-btn" type="button" data-status-filter="approved">Approved</button>
+    </div>
+
+    <form class="admin-auth" id="admin-auth">
+      <label class="field-label" for="admin-token">Admin token</label>
+      <div class="admin-auth-row">
+        <input
+          class="field-input"
+          type="password"
+          id="admin-token"
+          name="admin-token"
+          autocomplete="current-password"
+          required
+        />
+        <button class="secondary-btn" type="submit">Load pending</button>
+      </div>
+    </form>
+
+    <div class="admin-status" id="admin-status" role="status"></div>
+    <div class="admin-list" id="admin-list"></div>
+  </section>
+</BaseLayout>
+
+<script define:vars={{ ADMIN_FUNCTION_URL }}>
+  const authForm = document.getElementById('admin-auth');
+  const tokenInput = document.getElementById('admin-token');
+  const statusEl = document.getElementById('admin-status');
+  const listEl = document.getElementById('admin-list');
+  const filterButtons = document.querySelectorAll('[data-status-filter]');
+  let activeStatus = 'pending';
+
+  tokenInput.value = localStorage.getItem('memorialAdminToken') || '';
+
+  const formatDate = (date) => new Date(date).toLocaleString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+
+  function escapeHtml(value = '') {
+    return String(value)
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#39;');
+  }
+
+  function setStatus(message, tone = '') {
+    statusEl.textContent = message;
+    statusEl.dataset.tone = tone;
+  }
+
+  function renderMedia(message) {
+    if (!message.signedUrl) return '';
+
+    const signedUrl = escapeHtml(message.signedUrl);
+    const name = escapeHtml(message.name);
+
+    if (String(message.media_type || '').startsWith('video')) {
+      return `<video class="admin-media" src="${signedUrl}" controls playsinline></video>`;
+    }
+
+    return `<img class="admin-media" src="${signedUrl}" alt="Pending media from ${name}" />`;
+  }
+
+  function renderMessages(messages) {
+    if (!messages.length) {
+      listEl.innerHTML = '<p class="no-messages">No pending submissions.</p>';
+      return;
+    }
+
+    listEl.innerHTML = messages.map((message) => `
+      <article class="admin-card" data-message-id="${escapeHtml(message.id)}">
+        ${renderMedia(message)}
+        <div class="admin-card-body">
+          <div class="admin-card-meta">
+            <strong>${escapeHtml(message.name)}</strong>
+            <span>${escapeHtml(formatDate(message.created_at))}</span>
+          </div>
+          <p class="message-body">${escapeHtml(message.body || '')}</p>
+          <div class="admin-actions">
+            ${message.status === 'pending'
+              ? '<button class="secondary-btn" type="button" data-action="approve">Approve</button>'
+              : ''}
+            <button class="danger-btn" type="button" data-action="deny">Deny</button>
+          </div>
+        </div>
+      </article>
+    `).join('');
+  }
+
+  async function adminFetch(path = '', options = {}) {
+    const token = tokenInput.value.trim();
+    if (!token) throw new Error('Enter the admin token.');
+
+    localStorage.setItem('memorialAdminToken', token);
+
+    const res = await fetch(`${ADMIN_FUNCTION_URL}${path}`, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        'x-admin-token': token,
+        ...(options.headers || {}),
+      },
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+    return data;
+  }
+
+  async function loadSubmissions() {
+    setStatus(`Loading ${activeStatus} submissions...`);
+    const data = await adminFetch(`?status=${encodeURIComponent(activeStatus)}`);
+    renderMessages(data.messages || []);
+    setStatus(`${(data.messages || []).length} ${activeStatus} submission${(data.messages || []).length === 1 ? '' : 's'}.`);
+  }
+
+  authForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    try {
+      await loadSubmissions();
+    } catch (err) {
+      setStatus(err.message || 'Could not load submissions.', 'error');
+    }
+  });
+
+  filterButtons.forEach((button) => {
+    button.addEventListener('click', async () => {
+      activeStatus = button.dataset.statusFilter;
+      filterButtons.forEach((item) => item.classList.toggle('is-active', item === button));
+
+      try {
+        await loadSubmissions();
+      } catch (err) {
+        setStatus(err.message || 'Could not load submissions.', 'error');
+      }
+    });
+  });
+
+  listEl.addEventListener('click', async (event) => {
+    const button = event.target.closest('button[data-action]');
+    if (!button) return;
+
+    const card = button.closest('[data-message-id]');
+    const id = card?.dataset.messageId;
+    const action = button.dataset.action;
+    if (!id || !action) return;
+
+    button.disabled = true;
+    setStatus(`${action === 'approve' ? 'Approving' : 'Denying'} submission...`);
+
+    try {
+      await adminFetch('', {
+        method: 'PATCH',
+        body: JSON.stringify({ id, action }),
+      });
+      card.remove();
+      setStatus(`Submission ${action === 'approve' ? 'approved' : 'denied'}.`);
+
+      if (!listEl.querySelector('[data-message-id]')) {
+        listEl.innerHTML = '<p class="no-messages">No pending submissions.</p>';
+      }
+    } catch (err) {
+      button.disabled = false;
+      setStatus(err.message || 'Could not update submission.', 'error');
+    }
+  });
+
+  if (tokenInput.value) {
+    loadSubmissions().catch((err) => setStatus(err.message || 'Could not load submissions.', 'error'));
+  }
+</script>
