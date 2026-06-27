@@ -71,7 +71,7 @@ const HCAPTCHA_SITE_KEY = import.meta.env.PUBLIC_HCAPTCHA_SITE_KEY;
             type="file"
             id="media-input"
             name="media"
-            accept="image/jpeg,image/png,image/webp,image/heic,video/mp4"
+            accept="image/jpeg,image/png,image/webp,video/mp4,.jpg,.jpeg,.png,.webp,.mp4"
           />
         </label>
         <span class="field-error" id="media-error" aria-live="polite" hidden></span>
@@ -110,8 +110,10 @@ const HCAPTCHA_SITE_KEY = import.meta.env.PUBLIC_HCAPTCHA_SITE_KEY;
   const MAX_IMAGE = 10  * 1024 * 1024;  // 10 MB
   const MAX_VIDEO = 100 * 1024 * 1024;  // 100 MB
   const ACCEPTED_TYPES = new Set([
-    'image/jpeg', 'image/png', 'image/webp', 'image/heic', 'video/mp4'
+    'image/jpeg', 'image/png', 'image/webp', 'video/mp4'
   ]);
+  const ACCEPTED_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'webp', 'mp4']);
+  const UNSUPPORTED_IMAGE_EXTENSIONS = new Set(['heic', 'heif']);
 
   // ── DOM refs ───────────────────────────────────────────────
   const form        = document.getElementById('memorial-form');
@@ -150,12 +152,20 @@ const HCAPTCHA_SITE_KEY = import.meta.env.PUBLIC_HCAPTCHA_SITE_KEY;
 
   // ── File selection ─────────────────────────────────────────
   function applyFile(file) {
-    if (!ACCEPTED_TYPES.has(file.type)) {
+    const extension = file.name.split('.').pop()?.toLowerCase() || '';
+
+    if (UNSUPPORTED_IMAGE_EXTENSIONS.has(extension)) {
+      showError('media-error', 'HEIC/HEIF photos are not supported in this browser. Please convert the photo to JPEG, PNG, or WebP first.');
+      mediaInput.value = '';
+      return;
+    }
+
+    if (!ACCEPTED_TYPES.has(file.type) && !ACCEPTED_EXTENSIONS.has(extension)) {
       showError('media-error', 'Please upload an MP4 video or image file (JPEG, PNG, WebP).');
       mediaInput.value = '';
       return;
     }
-    const isVideo = file.type === 'video/mp4';
+    const isVideo = file.type === 'video/mp4' || extension === 'mp4';
     const limit   = isVideo ? MAX_VIDEO : MAX_IMAGE;
     const label   = isVideo ? '100 MB'  : '10 MB';
     if (file.size > limit) {
@@ -217,16 +227,19 @@ const HCAPTCHA_SITE_KEY = import.meta.env.PUBLIC_HCAPTCHA_SITE_KEY;
 
     const extension = file.name.split('.').pop()?.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() || 'bin';
     const path      = `media/${crypto.randomUUID()}.${extension}`;
+    const isVideo   = file.type === 'video/mp4' || extension === 'mp4';
 
     const { data, error } = await supabase.storage
       .from('memorial-media')
-      .upload(path, file);
+      .upload(path, file, {
+        contentType: file.type || (isVideo ? 'video/mp4' : 'application/octet-stream'),
+      });
 
     if (error) throw new Error(`Upload failed: ${error.message}`);
 
     return {
       mediaUrl:  data.path,
-      mediaType: file.type.startsWith('video') ? 'video' : 'image',
+      mediaType: isVideo ? 'video' : 'image',
     };
   }
 

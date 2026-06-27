@@ -9,14 +9,9 @@ const ADMIN_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/admin-messages`;
   <section class="admin-section">
     <header class="admin-header">
       <p class="eyebrow">Admin</p>
-      <h2 class="section-title">Pending submissions</h2>
-      <p class="admin-sub">Review submitted messages and media before they appear on the public board.</p>
+      <h2 class="section-title">Messages</h2>
+      <p class="admin-sub">Upload approved media, approve submissions, disapprove messages, or delete anything that should be removed.</p>
     </header>
-
-    <div class="admin-tabs" role="tablist" aria-label="Submission status">
-      <button class="secondary-btn is-active" type="button" data-status-filter="pending">Pending</button>
-      <button class="secondary-btn" type="button" data-status-filter="approved">Approved</button>
-    </div>
 
     <form class="admin-auth" id="admin-auth">
       <label class="field-label" for="admin-token">Admin token</label>
@@ -29,12 +24,50 @@ const ADMIN_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/admin-messages`;
           autocomplete="current-password"
           required
         />
-        <button class="secondary-btn" type="submit">Load pending</button>
+        <button class="secondary-btn" type="submit">Load admin</button>
       </div>
     </form>
 
     <div class="admin-status" id="admin-status" role="status"></div>
-    <div class="admin-list" id="admin-list"></div>
+
+    <div class="admin-panel-grid">
+      <section class="admin-panel" aria-labelledby="upload-title">
+        <div class="admin-panel-header">
+          <h3 id="upload-title">Bulk upload</h3>
+          <p class="admin-panel-sub">MP4, JPEG, PNG, or WebP. Uploaded files are approved immediately.</p>
+        </div>
+        <form class="admin-upload" id="admin-upload">
+          <label class="admin-upload-drop" id="admin-upload-drop" for="admin-media-input">
+            <span class="admin-upload-title">Drop files here or browse</span>
+            <span class="admin-upload-count" id="admin-upload-count">No files selected</span>
+            <input
+              id="admin-media-input"
+              name="files"
+              type="file"
+              accept="image/jpeg,image/png,image/webp,video/mp4,.jpg,.jpeg,.png,.webp,.mp4"
+              multiple
+            />
+          </label>
+          <div class="admin-actions">
+            <button class="secondary-btn" type="submit">Upload</button>
+            <button class="secondary-btn" id="admin-upload-clear" type="button">Clear</button>
+          </div>
+        </form>
+        <div class="admin-upload-results" id="admin-upload-results" aria-live="polite"></div>
+      </section>
+
+      <section class="admin-panel" aria-labelledby="moderation-title">
+        <div class="admin-panel-header">
+          <h3 id="moderation-title">Moderation</h3>
+          <div class="admin-tabs" role="tablist" aria-label="Message status">
+            <button class="secondary-btn is-active" type="button" data-status-filter="pending">Pending</button>
+            <button class="secondary-btn" type="button" data-status-filter="approved">Approved</button>
+            <button class="secondary-btn" type="button" data-status-filter="denied">Disapproved</button>
+          </div>
+        </div>
+        <div class="admin-list" id="admin-list"></div>
+      </section>
+    </div>
   </section>
 </BaseLayout>
 
@@ -44,7 +77,18 @@ const ADMIN_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/admin-messages`;
   const statusEl = document.getElementById('admin-status');
   const listEl = document.getElementById('admin-list');
   const filterButtons = document.querySelectorAll('[data-status-filter]');
+  const uploadForm = document.getElementById('admin-upload');
+  const uploadDrop = document.getElementById('admin-upload-drop');
+  const uploadInput = document.getElementById('admin-media-input');
+  const uploadCount = document.getElementById('admin-upload-count');
+  const uploadClear = document.getElementById('admin-upload-clear');
+  const uploadResults = document.getElementById('admin-upload-results');
   let activeStatus = 'pending';
+  const MAX_ADMIN_IMAGE = 10 * 1024 * 1024;
+  const MAX_ADMIN_VIDEO = 100 * 1024 * 1024;
+  const MAX_ADMIN_MEDIA_COUNT = 25;
+  const ACCEPTED_ADMIN_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'video/mp4']);
+  const ACCEPTED_ADMIN_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'webp', 'mp4']);
 
   tokenInput.value = localStorage.getItem('memorialAdminToken') || '';
 
@@ -70,6 +114,50 @@ const ADMIN_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/admin-messages`;
     statusEl.dataset.tone = tone;
   }
 
+  function fileExtension(name = '') {
+    return String(name).split('.').pop()?.toLowerCase() || '';
+  }
+
+  function mediaExtension(message) {
+    const path = String(message.media_url || message.signedUrl || '').split('?')[0];
+    return path.split('.').pop()?.toLowerCase() || '';
+  }
+
+  function isUnsupportedImage(message) {
+    return ['heic', 'heif'].includes(mediaExtension(message));
+  }
+
+  function mediaErrorFallback(media) {
+    const fallback = document.createElement('div');
+    fallback.className = 'admin-media admin-media-fallback';
+
+    const label = document.createElement('span');
+    label.textContent = 'Media could not be displayed';
+    fallback.append(label);
+
+    if (media.currentSrc || media.src) {
+      const link = document.createElement('a');
+      link.href = media.currentSrc || media.src;
+      link.target = '_blank';
+      link.rel = 'noopener';
+      link.textContent = 'Open file';
+      fallback.append(link);
+    }
+
+    return fallback;
+  }
+
+  function renderMediaFallback(message, label = 'Media could not be displayed') {
+    if (!message.signedUrl) return `<div class="admin-media admin-media-fallback">${escapeHtml(label)}</div>`;
+
+    return `
+      <div class="admin-media admin-media-fallback">
+        <span>${escapeHtml(label)}</span>
+        <a href="${escapeHtml(message.signedUrl)}" target="_blank" rel="noopener">Open file</a>
+      </div>
+    `;
+  }
+
   function renderMedia(message) {
     if (!message.signedUrl) return '';
 
@@ -80,12 +168,41 @@ const ADMIN_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/admin-messages`;
       return `<video class="admin-media" src="${signedUrl}" controls playsinline></video>`;
     }
 
-    return `<img class="admin-media" src="${signedUrl}" alt="Pending media from ${name}" />`;
+    if (isUnsupportedImage(message)) {
+      return renderMediaFallback(message, 'HEIC/HEIF image is not browser-viewable');
+    }
+
+    return `<img class="admin-media" src="${signedUrl}" alt="Media from ${name}" />`;
+  }
+
+  function statusLabel(status) {
+    return ['denied', 'rejected', 'disapproved'].includes(status) ? 'disapproved' : status;
+  }
+
+  function isDisapprovedStatus(status) {
+    return ['denied', 'rejected', 'disapproved'].includes(status);
+  }
+
+  function emptySubmissionsMessage() {
+    return `No ${statusLabel(activeStatus)} messages.`;
+  }
+
+  function renderActions(message) {
+    return `
+      <button class="secondary-btn" type="button" data-action="save">Save text</button>
+      ${message.status !== 'approved'
+        ? '<button class="secondary-btn" type="button" data-action="approve">Approve</button>'
+        : ''}
+      ${!isDisapprovedStatus(message.status)
+        ? '<button class="secondary-btn" type="button" data-action="disapprove">Disapprove</button>'
+        : ''}
+      <button class="danger-btn" type="button" data-action="delete">Delete</button>
+    `;
   }
 
   function renderMessages(messages) {
     if (!messages.length) {
-      listEl.innerHTML = '<p class="no-messages">No pending submissions.</p>';
+      listEl.innerHTML = `<p class="no-messages">${escapeHtml(emptySubmissionsMessage())}</p>`;
       return;
     }
 
@@ -97,31 +214,45 @@ const ADMIN_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/admin-messages`;
             <strong>${escapeHtml(message.name)}</strong>
             <span>${escapeHtml(formatDate(message.created_at))}</span>
           </div>
-          <p class="message-body">${escapeHtml(message.body || '')}</p>
-          <div class="admin-actions">
-            ${message.status === 'pending'
-              ? '<button class="secondary-btn" type="button" data-action="approve">Approve</button>'
-              : ''}
-            <button class="danger-btn" type="button" data-action="deny">Deny</button>
+          <div class="admin-edit-fields">
+            <label>
+              <span>Name</span>
+              <input class="field-input" type="text" maxlength="100" value="${escapeHtml(message.name)}" data-edit-name />
+            </label>
+            <label>
+              <span>Text</span>
+              <textarea class="field-input field-textarea" maxlength="2000" rows="3" data-edit-body>${escapeHtml(message.body || '')}</textarea>
+            </label>
           </div>
+          <div class="admin-actions">${renderActions(message)}</div>
         </div>
       </article>
     `).join('');
+
+    listEl.querySelectorAll('img.admin-media, video.admin-media').forEach((media) => {
+      media.addEventListener('error', () => {
+        media.replaceWith(mediaErrorFallback(media));
+      }, { once: true });
+    });
   }
 
-  async function adminFetch(path = '', options = {}) {
+  async function adminFetch(options = {}) {
     const token = tokenInput.value.trim();
     if (!token) throw new Error('Enter the admin token.');
 
     localStorage.setItem('memorialAdminToken', token);
+    const headers = {
+      'x-admin-token': token,
+      ...(options.headers || {}),
+    };
 
-    const res = await fetch(`${ADMIN_FUNCTION_URL}${path}`, {
+    if (!(options.body instanceof FormData)) {
+      headers['Content-Type'] = 'application/json';
+    }
+
+    const res = await fetch(options.url || ADMIN_FUNCTION_URL, {
       ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        'x-admin-token': token,
-        ...(options.headers || {}),
-      },
+      headers,
     });
 
     const data = await res.json().catch(() => ({}));
@@ -130,10 +261,67 @@ const ADMIN_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/admin-messages`;
   }
 
   async function loadSubmissions() {
-    setStatus(`Loading ${activeStatus} submissions...`);
-    const data = await adminFetch(`?status=${encodeURIComponent(activeStatus)}`);
+    setStatus(`Loading ${statusLabel(activeStatus)} messages...`);
+    const url = `${ADMIN_FUNCTION_URL}?status=${encodeURIComponent(activeStatus)}`;
+    const data = await adminFetch({ url });
     renderMessages(data.messages || []);
-    setStatus(`${(data.messages || []).length} ${activeStatus} submission${(data.messages || []).length === 1 ? '' : 's'}.`);
+    const count = (data.messages || []).length;
+    setStatus(`${count} ${statusLabel(activeStatus)} message${count === 1 ? '' : 's'}.`);
+  }
+
+  function validateUploadFiles(files) {
+    const errors = [];
+    if (!files.length) errors.push('Choose at least one file.');
+    if (files.length > MAX_ADMIN_MEDIA_COUNT) errors.push(`Choose up to ${MAX_ADMIN_MEDIA_COUNT} files at a time.`);
+
+    files.forEach((file) => {
+      const extension = fileExtension(file.name);
+      const isVideo = file.type === 'video/mp4' || extension === 'mp4';
+      const limit = isVideo ? MAX_ADMIN_VIDEO : MAX_ADMIN_IMAGE;
+      const label = isVideo ? '100 MB' : '10 MB';
+
+      if (!ACCEPTED_ADMIN_TYPES.has(file.type) && !ACCEPTED_ADMIN_EXTENSIONS.has(extension)) {
+        errors.push(`${file.name}: MP4, JPEG, PNG, or WebP only.`);
+      } else if (file.size > limit) {
+        errors.push(`${file.name}: must be ${label} or smaller.`);
+      } else if (file.size <= 0) {
+        errors.push(`${file.name}: file is empty.`);
+      }
+    });
+
+    return errors;
+  }
+
+  function syncUploadCount() {
+    const files = Array.from(uploadInput.files || []);
+    uploadCount.textContent = files.length
+      ? `${files.length} file${files.length === 1 ? '' : 's'} selected`
+      : 'No files selected';
+  }
+
+  function assignUploadFiles(files) {
+    const dt = new DataTransfer();
+    files.forEach((file) => dt.items.add(file));
+    uploadInput.files = dt.files;
+    syncUploadCount();
+  }
+
+  function renderUploadResults(results = []) {
+    if (!results.length) {
+      uploadResults.innerHTML = '';
+      return;
+    }
+
+    uploadResults.innerHTML = `
+      <ul>
+        ${results.map((result) => `
+          <li data-success="${result.success ? 'true' : 'false'}">
+            <strong>${escapeHtml(result.filename || 'File')}</strong>
+            <span>${result.success ? 'Uploaded and approved' : escapeHtml(result.error || 'Failed')}</span>
+          </li>
+        `).join('')}
+      </ul>
+    `;
   }
 
   authForm.addEventListener('submit', async (event) => {
@@ -141,7 +329,7 @@ const ADMIN_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/admin-messages`;
     try {
       await loadSubmissions();
     } catch (err) {
-      setStatus(err.message || 'Could not load submissions.', 'error');
+      setStatus(err.message || 'Could not load admin.', 'error');
     }
   });
 
@@ -153,7 +341,7 @@ const ADMIN_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/admin-messages`;
       try {
         await loadSubmissions();
       } catch (err) {
-        setStatus(err.message || 'Could not load submissions.', 'error');
+        setStatus(err.message || 'Could not load messages.', 'error');
       }
     });
   });
@@ -167,27 +355,98 @@ const ADMIN_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/admin-messages`;
     const action = button.dataset.action;
     if (!id || !action) return;
 
+    if (action === 'delete' && !window.confirm('Delete this message and its media?')) return;
+
     button.disabled = true;
-    setStatus(`${action === 'approve' ? 'Approving' : 'Denying'} submission...`);
+    setStatus(`${action === 'delete' ? 'Deleting' : action === 'approve' ? 'Approving' : action === 'save' ? 'Saving' : 'Disapproving'} message...`);
 
     try {
-      await adminFetch('', {
-        method: 'PATCH',
+      if (action === 'save') {
+        const name = card.querySelector('[data-edit-name]')?.value.trim() || '';
+        const body = card.querySelector('[data-edit-body]')?.value.trim() || '';
+
+        if (!name) throw new Error('Name is required.');
+
+        const data = await adminFetch({
+          method: 'PATCH',
+          body: JSON.stringify({ id, action, name, body }),
+        });
+
+        const savedName = data.message?.name || name;
+        card.querySelector('.admin-card-meta strong').textContent = savedName;
+        card.querySelector('[data-edit-name]').value = savedName;
+        card.querySelector('[data-edit-body]').value = data.message?.body || '';
+        button.disabled = false;
+        setStatus('Message text saved.');
+        return;
+      }
+
+      await adminFetch({
+        method: action === 'delete' ? 'DELETE' : 'PATCH',
         body: JSON.stringify({ id, action }),
       });
       card.remove();
-      setStatus(`Submission ${action === 'approve' ? 'approved' : 'denied'}.`);
+      setStatus(`Message ${action === 'delete' ? 'deleted' : action === 'approve' ? 'approved' : 'disapproved'}.`);
 
       if (!listEl.querySelector('[data-message-id]')) {
-        listEl.innerHTML = '<p class="no-messages">No pending submissions.</p>';
+        listEl.innerHTML = `<p class="no-messages">${escapeHtml(emptySubmissionsMessage())}</p>`;
       }
     } catch (err) {
       button.disabled = false;
-      setStatus(err.message || 'Could not update submission.', 'error');
+      setStatus(err.message || 'Could not update message.', 'error');
+    }
+  });
+
+  uploadInput.addEventListener('change', syncUploadCount);
+  uploadClear.addEventListener('click', () => {
+    uploadInput.value = '';
+    syncUploadCount();
+    renderUploadResults();
+  });
+
+  uploadDrop.addEventListener('dragover', (event) => {
+    event.preventDefault();
+    uploadDrop.classList.add('drag-over');
+  });
+  uploadDrop.addEventListener('dragleave', () => uploadDrop.classList.remove('drag-over'));
+  uploadDrop.addEventListener('drop', (event) => {
+    event.preventDefault();
+    uploadDrop.classList.remove('drag-over');
+    assignUploadFiles(Array.from(event.dataTransfer.files || []));
+  });
+
+  uploadForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const files = Array.from(uploadInput.files || []);
+    const errors = validateUploadFiles(files);
+
+    if (errors.length) {
+      renderUploadResults(errors.map((error) => ({ filename: 'Validation', success: false, error })));
+      setStatus('Some files need attention before upload.', 'error');
+      return;
+    }
+
+    const formData = new FormData();
+    files.forEach((file) => formData.append('files', file));
+    setStatus(`Uploading ${files.length} file${files.length === 1 ? '' : 's'}...`);
+
+    try {
+      const data = await adminFetch({
+        method: 'POST',
+        body: formData,
+      });
+      renderUploadResults(data.results || []);
+      uploadInput.value = '';
+      syncUploadCount();
+      if (activeStatus === 'approved') await loadSubmissions();
+      const uploaded = (data.results || []).filter((result) => result.success).length;
+      setStatus(`${uploaded} file${uploaded === 1 ? '' : 's'} uploaded and approved${uploaded === files.length ? '.' : ' with some failures.'}`, uploaded ? '' : 'error');
+    } catch (err) {
+      setStatus(err.message || 'Upload failed.', 'error');
     }
   });
 
   if (tokenInput.value) {
-    loadSubmissions().catch((err) => setStatus(err.message || 'Could not load submissions.', 'error'));
+    loadSubmissions().catch((err) => setStatus(err.message || 'Could not load admin.', 'error'));
   }
 </script>

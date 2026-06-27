@@ -10,8 +10,7 @@ const PUBLIC_MESSAGES_URL = `${SUPABASE_URL}/functions/v1/public-messages`;
 <section class="messages-section">
   <div class="messages-inner">
     <header class="messages-header">
-      <p class="eyebrow">Memories shared</p>
-      <h2 class="section-title">Messages of remembrance</h2>
+      <h2 class="section-title">Gallery</h2>
     </header>
 
     <div class="messages-grid" id="messages-grid">
@@ -20,8 +19,30 @@ const PUBLIC_MESSAGES_URL = `${SUPABASE_URL}/functions/v1/public-messages`;
   </div>
 </section>
 
+<div class="media-viewer" id="media-viewer" hidden role="dialog" aria-modal="true" aria-label="Media viewer">
+  <button class="media-viewer-close" id="media-viewer-close" type="button" aria-label="Close media viewer">×</button>
+  <button class="media-viewer-nav media-viewer-prev" id="media-viewer-prev" type="button" aria-label="Previous image">‹</button>
+  <div class="media-viewer-frame" id="media-viewer-frame"></div>
+  <div class="media-viewer-caption" id="media-viewer-caption" hidden></div>
+  <button class="media-viewer-nav media-viewer-next" id="media-viewer-next" type="button" aria-label="Next image">›</button>
+</div>
+
 <script define:vars={{ PUBLIC_MESSAGES_URL }}>
   const grid = document.getElementById('messages-grid');
+  const mediaViewer = document.getElementById('media-viewer');
+  const mediaViewerFrame = document.getElementById('media-viewer-frame');
+  const mediaViewerClose = document.getElementById('media-viewer-close');
+  const mediaViewerPrev = document.getElementById('media-viewer-prev');
+  const mediaViewerNext = document.getElementById('media-viewer-next');
+  const mediaViewerCaption = document.getElementById('media-viewer-caption');
+  const GALLERY_GAP = 6;
+  const TARGET_ROW_HEIGHT = 200;
+  const MAX_ROW_HEIGHT = 260;
+  const COMPACT_BREAKPOINT = 560;
+  let relayoutGallery = () => {};
+  let viewerCards = [];
+  let viewerIndex = -1;
+  let viewerRenderId = 0;
 
   function escapeHtml(value = '') {
     return String(value)
@@ -32,24 +53,37 @@ const PUBLIC_MESSAGES_URL = `${SUPABASE_URL}/functions/v1/public-messages`;
       .replaceAll("'", '&#39;');
   }
 
-  function formatDate(value) {
-    return new Date(value).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
+  function renderMessageOverlay(message) {
+    if (!message.body) return '';
+
+    return `<p class="message-body">${escapeHtml(message.body)}</p>`;
+  }
+
+  function mediaExtension(message) {
+    const path = String(message.media_url || message.signedUrl || '').split('?')[0];
+    return path.split('.').pop()?.toLowerCase() || '';
+  }
+
+  function isUnsupportedImage(message) {
+    return ['heic', 'heif'].includes(mediaExtension(message));
+  }
+
+  function isDisplayableMedia(message) {
+    if (!message.signedUrl) return false;
+    if (String(message.media_type || '').startsWith('video')) return true;
+    return !isUnsupportedImage(message);
   }
 
   function renderMedia(message) {
-    if (!message.signedUrl) return '';
-
+    const overlay = renderMessageOverlay(message);
     const signedUrl = escapeHtml(message.signedUrl);
     const name = escapeHtml(message.name);
 
     if (String(message.media_type || '').startsWith('video')) {
       return `
         <div class="message-media">
-          <video src="${signedUrl}" controls playsinline></video>
+          <video src="${signedUrl}" autoplay muted loop playsinline></video>
+          ${overlay}
         </div>
       `;
     }
@@ -57,27 +91,376 @@ const PUBLIC_MESSAGES_URL = `${SUPABASE_URL}/functions/v1/public-messages`;
     return `
       <div class="message-media">
         <img src="${signedUrl}" alt="Memory shared by ${name}" loading="lazy" />
+        ${overlay}
       </div>
     `;
   }
 
   function renderMessages(messages) {
-    if (!messages.length) {
-      grid.innerHTML = '<p class="no-messages">No messages yet. Be the first to share a memory.</p>';
+    const displayableMessages = messages.filter(isDisplayableMedia);
+
+    if (!displayableMessages.length) {
+      grid.innerHTML = '<p class="no-messages">No viewable media yet.</p>';
       return;
     }
 
-    grid.innerHTML = messages.map((message) => `
-      <article class="message-card">
+    grid.innerHTML = displayableMessages.map((message) => {
+      const isVideo = String(message.media_type || '').startsWith('video');
+
+      return `
+      <article
+        class="message-card${message.body ? ' has-message' : ''}"
+        tabindex="0"
+        data-media-src="${escapeHtml(message.signedUrl)}"
+        data-media-type="${isVideo ? 'video' : 'image'}"
+        data-media-name="${escapeHtml(message.name)}"
+        data-media-message="${escapeHtml(message.body || '')}"
+      >
         ${renderMedia(message)}
         <div class="message-content">
           <p class="message-name">${escapeHtml(message.name)}</p>
-          <p class="message-body">${escapeHtml(message.body || '')}</p>
-          <p class="message-date">${escapeHtml(formatDate(message.created_at))}</p>
         </div>
       </article>
-    `).join('');
+    `;
+    }).join('');
+
+    attachMediaErrorHandlers(grid);
+
+    relayoutGallery = buildJustifiedRows(grid, Array.from(grid.querySelectorAll('.message-card')), {
+      gap: GALLERY_GAP,
+      targetRowHeight: TARGET_ROW_HEIGHT,
+    });
   }
+
+  function visibleMediaCards() {
+    return Array.from(grid.querySelectorAll('.message-card'))
+      .filter((card) => card.dataset.mediaError !== 'true' && card.dataset.mediaSrc);
+  }
+
+  function updateViewerNav() {
+    const hasMultiple = viewerCards.length > 1;
+    mediaViewerPrev.hidden = !hasMultiple;
+    mediaViewerNext.hidden = !hasMultiple;
+  }
+
+  function currentMediaSrc(card) {
+    const media = card.querySelector('img, video');
+    return card.dataset.mediaSrc || media?.currentSrc || media?.src || '';
+  }
+
+  function renderViewerFallback(src, message = 'Photo could not be displayed') {
+    mediaViewerFrame.innerHTML = `
+      <div class="media-viewer-fallback" role="status">
+        <p>${escapeHtml(message)}</p>
+        ${src ? `<a href="${escapeHtml(src)}" target="_blank" rel="noopener">Open file</a>` : ''}
+      </div>
+    `;
+  }
+
+  function renderViewerCard(card) {
+    const src = currentMediaSrc(card);
+    if (!src) return;
+
+    const renderId = ++viewerRenderId;
+    const type = card.dataset.mediaType;
+    const name = card.dataset.mediaName || 'Shared media';
+    const message = card.dataset.mediaMessage || '';
+
+    mediaViewerFrame.innerHTML = '<div class="media-viewer-loading" role="status">Loading...</div>';
+
+    if (type === 'video') {
+      const video = document.createElement('video');
+      video.className = 'media-viewer-media';
+      video.src = src;
+      video.controls = true;
+      video.autoplay = true;
+      video.playsInline = true;
+      video.addEventListener('error', () => {
+        if (renderId === viewerRenderId) renderViewerFallback(src, 'Video could not be displayed');
+      }, { once: true });
+      mediaViewerFrame.replaceChildren(video);
+    } else {
+      const image = new Image();
+      image.className = 'media-viewer-media media-viewer-image';
+      image.alt = `Memory shared by ${name}`;
+      image.decoding = 'async';
+      image.addEventListener('load', () => {
+        if (renderId === viewerRenderId) mediaViewerFrame.replaceChildren(image);
+      }, { once: true });
+      image.addEventListener('error', () => {
+        if (renderId === viewerRenderId) renderViewerFallback(src);
+      }, { once: true });
+      image.src = src;
+
+      if (image.complete && image.naturalWidth) {
+        mediaViewerFrame.replaceChildren(image);
+      }
+    }
+
+    mediaViewerCaption.innerHTML = message
+      ? `<p>${escapeHtml(message)}</p>`
+      : '';
+    mediaViewerCaption.hidden = !message;
+    updateViewerNav();
+  }
+
+  function openMediaViewer(card) {
+    viewerCards = visibleMediaCards();
+    viewerIndex = Math.max(0, viewerCards.indexOf(card));
+    renderViewerCard(viewerCards[viewerIndex] || card);
+    mediaViewer.hidden = false;
+    document.body.classList.add('has-media-viewer');
+    mediaViewerClose.focus();
+  }
+
+  function showViewerOffset(offset) {
+    if (mediaViewer.hidden || viewerCards.length < 2) return;
+
+    const media = mediaViewerFrame.querySelector('video');
+    if (media) media.pause();
+
+    viewerIndex = (viewerIndex + offset + viewerCards.length) % viewerCards.length;
+    renderViewerCard(viewerCards[viewerIndex]);
+  }
+
+  function closeMediaViewer() {
+    if (mediaViewer.hidden) return;
+
+    const media = mediaViewerFrame.querySelector('video');
+    if (media) media.pause();
+    mediaViewerFrame.replaceChildren();
+    mediaViewerCaption.replaceChildren();
+    mediaViewerCaption.hidden = true;
+    mediaViewer.hidden = true;
+    document.body.classList.remove('has-media-viewer');
+    viewerCards = [];
+    viewerIndex = -1;
+    viewerRenderId += 1;
+  }
+
+  grid.addEventListener('click', (event) => {
+    const card = event.target.closest('.message-card');
+    if (!card || card.dataset.mediaError === 'true') return;
+    openMediaViewer(card);
+  });
+
+  grid.addEventListener('keydown', (event) => {
+    if (!['Enter', ' '].includes(event.key)) return;
+
+    const card = event.target.closest('.message-card');
+    if (!card || card.dataset.mediaError === 'true') return;
+    event.preventDefault();
+    openMediaViewer(card);
+  });
+
+  mediaViewer.addEventListener('click', (event) => {
+    if (event.target === mediaViewer) closeMediaViewer();
+  });
+
+  mediaViewerClose.addEventListener('click', closeMediaViewer);
+  mediaViewerPrev.addEventListener('click', () => showViewerOffset(-1));
+  mediaViewerNext.addEventListener('click', () => showViewerOffset(1));
+
+  window.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') closeMediaViewer();
+    if (event.key === 'ArrowLeft') showViewerOffset(-1);
+    if (event.key === 'ArrowRight') showViewerOffset(1);
+  });
+
+  function attachMediaErrorHandlers(container) {
+    container.querySelectorAll('img, video').forEach((media) => {
+      if (media.tagName === 'IMG' && media.complete && !media.naturalWidth) {
+        removeMediaCard(media);
+        return;
+      }
+
+      media.addEventListener('error', () => {
+        removeMediaCard(media);
+        relayoutGallery();
+      }, { once: true });
+    });
+  }
+
+  function removeMediaCard(media) {
+    const card = media.closest('.message-card');
+    if (!card) return;
+
+    card.dataset.mediaError = 'true';
+    card.remove();
+  }
+
+  function waitForMediaDimensions(card) {
+    const media = card.querySelector('img, video');
+    if (!media) return Promise.resolve(4 / 3);
+    const fallbackRatio = media.tagName === 'VIDEO' ? 16 / 9 : 4 / 3;
+
+    function waitWithFallback(setup, fallback = fallbackRatio) {
+      return new Promise((resolve) => {
+        let didResolve = false;
+        const finish = (ratio) => {
+          if (didResolve) return;
+          didResolve = true;
+          resolve(ratio === null ? null : ratio || fallback);
+        };
+
+        setup(finish);
+        window.setTimeout(() => finish(fallback), 1600);
+      });
+    }
+
+    if (media.tagName === 'IMG') {
+      if (media.complete && !media.naturalWidth) {
+        removeMediaCard(media);
+        return Promise.resolve(null);
+      }
+
+      if (media.complete && media.naturalWidth) {
+        return Promise.resolve(media.naturalWidth / Math.max(media.naturalHeight, 1));
+      }
+
+      return waitWithFallback((finish) => {
+        media.addEventListener('load', () => finish(media.naturalWidth / Math.max(media.naturalHeight, 1)), { once: true });
+        media.addEventListener('error', () => {
+          removeMediaCard(media);
+          finish(null);
+        }, { once: true });
+      });
+    }
+
+    if (media.readyState >= 1 && media.videoWidth) {
+      return Promise.resolve(media.videoWidth / Math.max(media.videoHeight, 1));
+    }
+
+    return waitWithFallback((finish) => {
+      media.addEventListener('loadedmetadata', () => finish(media.videoWidth / Math.max(media.videoHeight, 1)), { once: true });
+      media.addEventListener('error', () => {
+        removeMediaCard(media);
+        finish(null);
+      }, { once: true });
+    });
+  }
+
+  function createGalleryCard(item) {
+    if (typeof item !== 'string') return item;
+
+    const card = document.createElement('article');
+    card.className = 'message-card';
+    card.innerHTML = `
+      <div class="message-media">
+        <img src="${escapeHtml(item)}" alt="" loading="lazy" />
+      </div>
+    `;
+    return card;
+  }
+
+  function normalizeAspectRatio(ratio) {
+    return Math.max(0.1, ratio || 4 / 3);
+  }
+
+  function buildJustifiedRows(container, items, options = {}) {
+    const gap = options.gap ?? 6;
+    const targetRowHeight = options.targetRowHeight ?? 200;
+    const maxRowHeight = options.maxRowHeight ?? MAX_ROW_HEIGHT;
+    const cards = items.map(createGalleryCard);
+
+    container.replaceChildren(...cards);
+
+    Promise.all(cards.map(async (card) => {
+      const aspectRatio = await waitForMediaDimensions(card);
+      return { element: card, aspectRatio };
+    })).then((items) => {
+      const galleryItems = items.filter((item) => Number.isFinite(item.aspectRatio) && item.aspectRatio > 0);
+
+      function layout() {
+        const containerWidth = container.clientWidth;
+        if (!containerWidth) {
+          requestAnimationFrame(layout);
+          return;
+        }
+
+        container.replaceChildren();
+        const isCompact = containerWidth < COMPACT_BREAKPOINT;
+        const normalizedItems = galleryItems.map((item) => ({
+          ...item,
+          layoutRatio: normalizeAspectRatio(item.aspectRatio),
+        })).filter((item) => item.element.dataset.mediaError !== 'true');
+
+        if (!normalizedItems.length) {
+          container.innerHTML = '<p class="no-messages">No viewable media yet.</p>';
+          return;
+        }
+
+        const targetHeight = isCompact
+          ? Math.min(MAX_ROW_HEIGHT, Math.max(120, containerWidth / 1.5))
+          : targetRowHeight;
+        const rows = [];
+        let row = [];
+        let rowAspectRatio = 0;
+
+        normalizedItems.forEach((item) => {
+          if (isCompact) {
+            rows.push({ items: [item], aspectRatio: item.layoutRatio });
+            return;
+          }
+
+          row.push(item);
+          rowAspectRatio += item.layoutRatio;
+
+          const rowGapWidth = gap * Math.max(row.length - 1, 0);
+          if ((rowAspectRatio * targetHeight) + rowGapWidth >= containerWidth) {
+            rows.push({ items: row, aspectRatio: rowAspectRatio });
+            row = [];
+            rowAspectRatio = 0;
+          }
+        });
+
+        if (row.length) rows.push({ items: row, aspectRatio: rowAspectRatio });
+
+        rows.forEach(({ items: rowItems, aspectRatio }, rowIndex) => {
+          const isLast = rowIndex === rows.length - 1;
+          const rowElement = document.createElement('div');
+          rowElement.className = 'gallery-row';
+          rowElement.style.gap = `${gap}px`;
+
+          const totalGapWidth = gap * Math.max(rowItems.length - 1, 0);
+          const justifiedHeight = (containerWidth - totalGapWidth) / aspectRatio;
+          const shouldJustify = isCompact || !isLast || rowItems.length > 1 && justifiedHeight <= maxRowHeight;
+          const rowHeight = shouldJustify
+            ? justifiedHeight
+            : Math.min(maxRowHeight, targetHeight);
+          let usedWidth = 0;
+
+          rowItems.forEach((item, index) => {
+            const itemWidth = shouldJustify && index === rowItems.length - 1
+              ? containerWidth - totalGapWidth - usedWidth
+              : Math.round(rowHeight * item.layoutRatio);
+            const media = item.element.querySelector('.message-media');
+
+            item.element.style.width = `${itemWidth}px`;
+            item.element.style.flexBasis = `${itemWidth}px`;
+            if (media) media.style.height = `${rowHeight}px`;
+            usedWidth += itemWidth;
+            rowElement.append(item.element);
+          });
+
+          container.append(rowElement);
+        });
+      }
+
+      layout();
+      relayoutGallery = layout;
+    });
+
+    return relayoutGallery;
+  }
+
+  window.buildJustifiedRows = buildJustifiedRows;
+
+  let resizeTimer;
+  window.addEventListener('resize', () => {
+    window.clearTimeout(resizeTimer);
+    resizeTimer = window.setTimeout(() => relayoutGallery(), 100);
+  });
 
   fetch(PUBLIC_MESSAGES_URL)
     .then(async (response) => {

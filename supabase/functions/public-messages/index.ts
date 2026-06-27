@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js";
+import { signMediaUrl } from "../_shared/media.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -30,8 +31,9 @@ serve(async (req) => {
 
   const { data, error } = await supabase
     .from("messages")
-    .select("name, body, media_url, media_type, created_at")
+    .select("id, name, body, media_url, media_type, created_at")
     .eq("status", "approved")
+    .not("media_url", "is", null)
     .order("created_at", { ascending: false });
 
   if (error) {
@@ -41,13 +43,8 @@ serve(async (req) => {
 
   const messages = await Promise.all(
     (data ?? []).map(async (msg) => {
-      if (!msg.media_url) return msg;
-
-      const { data: signed } = await supabase.storage
-        .from("memorial-media")
-        .createSignedUrl(msg.media_url, 3600);
-
-      return { ...msg, signedUrl: signed?.signedUrl || null };
+      const signedUrl = await signMediaUrl(supabase, msg.media_url);
+      return { ...msg, signedUrl };
     }),
   );
 
