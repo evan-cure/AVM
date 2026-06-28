@@ -1,9 +1,10 @@
+@import url("https://fonts.googleapis.com/css2?family=Lexend+Giga:wght@100..900&family=Open+Sans:ital,wght@0,300..800;1,300..800&family=Zilla+Slab:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,500;1,600;1,700&display=swap");
 :root {
 	--color-border: #d8d8d8;
 	--color-muted: #666;
 	--color-error: #b00020;
 	--color-focus: #1f5eff;
-	--page-width: 920px;
+	--page-width: 100vw;
 }
 
 * {
@@ -13,20 +14,15 @@
 body {
 	margin: 0;
 	color: #222;
-	background: #fff;
-	font-family:
-		system-ui,
-		-apple-system,
-		BlinkMacSystemFont,
-		"Segoe UI",
-		sans-serif;
+	background: #fdfdfd;
+	font-family: "Open Sans", Georgia, serif;
 	line-height: 1.5;
 }
 
 main {
 	width: min(var(--page-width), calc(100% - 2rem));
 	margin: 0 auto;
-	padding: 2rem 0 4rem;
+	padding: 0;
 }
 
 a {
@@ -45,16 +41,23 @@ textarea {
 	font: inherit;
 }
 
-.site-header {
-	border-bottom: 1px solid var(--color-border);
-}
-
 .site-nav {
 	width: min(var(--page-width), calc(100% - 2rem));
 	margin: 0 auto;
 	display: flex;
 	gap: 1rem;
-	padding: 1rem 0;
+	align-items: center;
+	opacity: 0.1;
+	position: sticky;
+	top: 0;
+	z-index: 10;
+	transition:
+		transform 250ms ease,
+		opacity 250ms ease;
+}
+
+.site-nav:hover {
+	opacity: 1;
 }
 
 .site-nav a {
@@ -64,6 +67,12 @@ textarea {
 
 .site-nav a:hover {
 	text-decoration: underline;
+}
+
+img.main-icon {
+	max-width: 70px;
+	margin-right: 0.5rem;
+	margin-top: 0.25rem;
 }
 
 .eyebrow {
@@ -77,6 +86,7 @@ textarea {
 	margin-bottom: 0.5rem;
 	font-size: 2rem;
 	line-height: 1.2;
+	text-align: center;
 }
 
 .field-error {
@@ -290,11 +300,7 @@ textarea {
 	min-height: calc(100vh - 3.6rem);
 	margin-left: calc(50% - 50vw);
 	padding: 1rem max(1rem, calc((100vw - var(--page-width)) / 2)) 3rem;
-	background: #fff;
-}
-
-.messages-header {
-	margin-bottom: 1.5rem;
+	padding-top: 0;
 }
 
 .messages-header .section-title {
@@ -307,7 +313,7 @@ textarea {
 .messages-grid {
 	display: flex;
 	flex-direction: column;
-	gap: 6px;
+	gap: 30px;
 	width: 100%;
 }
 
@@ -321,15 +327,24 @@ textarea {
 	position: relative;
 	flex: 0 0 auto;
 	min-width: 0;
-	cursor: zoom-in;
+	cursor: pointer;
+	border: none;
 }
 
 .message-media {
 	position: relative;
 	overflow: hidden;
-	border: 1px solid var(--color-border);
 	border-radius: 0;
 	background: #f7f7f7;
+	max-width: 100%;
+	transition:
+		transform 160ms ease,
+		box-shadow 160ms ease;
+}
+
+.message-card:hover .message-media {
+	transform: scale(1.03);
+	box-shadow: 0 8px 24px rgb(0 0 0 / 0.18);
 }
 
 .message-media img,
@@ -418,12 +433,15 @@ textarea {
 .media-viewer-nav {
 	position: absolute;
 	z-index: 1;
-	border: 1px solid rgb(255 255 255 / 0.35);
-	border-radius: 999px;
+	/* border: 1px solid rgb(255 255 255 / 0.35);
+	border-radius: 999px; */
 	color: #fff;
-	background: rgb(0 0 0 / 0.45);
+	/* background: rgb(0 0 0 / 0.45); */
 	line-height: 1;
 	cursor: pointer;
+	display: flex;
+	align-items: center;
+	justify-content: center;
 }
 
 .media-viewer-close {
@@ -431,15 +449,18 @@ textarea {
 	right: 1rem;
 	width: 2.75rem;
 	height: 2.75rem;
-	font-size: 1.75rem;
+	background-color: transparent;
+	border: none;
 }
 
 .media-viewer-nav {
 	top: 50%;
 	width: 3.25rem;
 	height: 3.25rem;
-	font-size: 2.75rem;
 	transform: translateY(-50%);
+	border: none;
+	background: transparent;
+	filter: drop-shadow(0 1px 3px rgb(0 0 0 / 0.5));
 }
 
 .media-viewer-nav[hidden] {
@@ -519,6 +540,18 @@ body.has-media-viewer {
 	color: #fff;
 	pointer-events: none;
 	text-shadow: 0 1px 3px rgb(0 0 0 / 0.45);
+	opacity: 0;
+	transform: translateY(-0.5rem);
+	transition:
+		opacity 160ms ease,
+		transform 160ms ease;
+}
+
+.message-card:hover .message-content,
+.message-card:focus .message-content,
+.message-card:focus-within .message-content {
+	opacity: 1;
+	transform: translateY(0);
 }
 
 .message-name {

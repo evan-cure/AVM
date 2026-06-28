@@ -52,26 +52,6 @@ serve(async (req) => {
     const cleanName = cleanText(name, 100);
     const cleanBody = cleanText(body, 2000);
 
-    // Verify hCaptcha
-    const captchaRes = await fetch("https://hcaptcha.com/siteverify", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: `secret=${Deno.env.get("HCAPTCHA_SECRET")}&response=${token}`
-    });
-    const captcha = await captchaRes.json();
-    if (!captcha.success) {
-      return json({ error: "Invalid captcha" }, 400);
-    }
-
-    // Require at least a name and body message
-    if (!cleanName || !cleanBody) {
-      return json({ error: "Missing name or message" }, 400);
-    }
-
-    if (cleanBody.length < 10) {
-      return json({ error: "Message must be at least 10 characters." }, 400);
-    }
-
     const mediaError = validateSubmittedMedia(mediaUrl, mediaType);
     if (mediaError) {
       return json({ error: mediaError }, 400);
@@ -103,8 +83,8 @@ serve(async (req) => {
         "Authorization": `Bearer ${Deno.env.get("RESEND_API_KEY")}`
       },
       body: JSON.stringify({
-        from: "memorial@yourdomain.com",
-        to: "you@youremail.com",
+        from: "onboarding@resend.dev",
+        to: "avmem.admin@gmail.com",
         subject: `New ${mediaType || 'text'} submission from ${cleanName}`,
         text: `${cleanName} submitted a message.${cleanBody ? "\n\nMessage: " + cleanBody : ""}${mediaUrl ? "\n\nMedia: " + mediaUrl : ""}`
       })

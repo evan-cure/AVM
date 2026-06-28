@@ -5,7 +5,6 @@
 const SUPABASE_URL      = import.meta.env.PUBLIC_SUPABASE_URL;
 const SUPABASE_ANON_KEY = import.meta.env.PUBLIC_SUPABASE_ANON_KEY;
 const FUNCTION_URL      = `${SUPABASE_URL}/functions/v1/submit-message`;
-const HCAPTCHA_SITE_KEY = import.meta.env.PUBLIC_HCAPTCHA_SITE_KEY;
 ---
 
 <!-- ── Submit form ─────────────────────────────────────────── -->
@@ -13,7 +12,7 @@ const HCAPTCHA_SITE_KEY = import.meta.env.PUBLIC_HCAPTCHA_SITE_KEY;
   <div class="submit-inner">
     <header class="submit-header">
       <p class="eyebrow">Leave a memory</p>
-      <h2 class="section-title">Share a message</h2>
+      <h2 class="section-title">Share a memory</h2>
       <p class="submit-sub">Your message will be reviewed before appearing on this page.</p>
     </header>
 
@@ -28,7 +27,6 @@ const HCAPTCHA_SITE_KEY = import.meta.env.PUBLIC_HCAPTCHA_SITE_KEY;
           placeholder="e.g. Sarah Thompson"
           maxlength="100"
           autocomplete="name"
-          required
         />
         <span class="field-error" id="name-error" aria-live="polite" hidden></span>
       </div>
@@ -42,7 +40,6 @@ const HCAPTCHA_SITE_KEY = import.meta.env.PUBLIC_HCAPTCHA_SITE_KEY;
           placeholder="Share a memory, a story, or a few words…"
           maxlength="2000"
           rows="5"
-          required
         ></textarea>
         <div class="field-footer">
           <span class="field-error" id="body-error" aria-live="polite" hidden></span>
@@ -52,7 +49,7 @@ const HCAPTCHA_SITE_KEY = import.meta.env.PUBLIC_HCAPTCHA_SITE_KEY;
 
       <div class="field-group">
         <label class="field-label">
-          Media <span class="optional-tag">optional</span>
+          Media 
         </label>
         <label class="file-drop" id="file-drop" for="media-input">
           <div class="file-drop-inner" id="drop-inner">
@@ -77,11 +74,6 @@ const HCAPTCHA_SITE_KEY = import.meta.env.PUBLIC_HCAPTCHA_SITE_KEY;
         <span class="field-error" id="media-error" aria-live="polite" hidden></span>
       </div>
 
-      <div class="captcha-row">
-        <div class="h-captcha" data-sitekey={HCAPTCHA_SITE_KEY}></div>
-        <span class="field-error" id="captcha-error" aria-live="polite" hidden></span>
-      </div>
-
       <button type="submit" class="submit-btn" id="submit-btn">
         <span class="btn-label">Send message</span>
         <span class="btn-spinner" id="btn-spinner" aria-hidden="true" hidden>
@@ -103,7 +95,6 @@ const HCAPTCHA_SITE_KEY = import.meta.env.PUBLIC_HCAPTCHA_SITE_KEY;
   </div>
 </section>
 
-<script src="https://js.hcaptcha.com/1/api.js" async defer></script>
 
 <script define:vars={{ FUNCTION_URL, SUPABASE_URL, SUPABASE_ANON_KEY }}>
   // ── Constants ──────────────────────────────────────────────
@@ -205,19 +196,13 @@ const HCAPTCHA_SITE_KEY = import.meta.env.PUBLIC_HCAPTCHA_SITE_KEY;
 
   // ── Validation ─────────────────────────────────────────────
   function validateForm() {
-    ['name-error', 'body-error', 'captcha-error'].forEach(clearError);
+    ['name-error', 'body-error'].forEach(clearError);
     let valid = true;
 
     const name  = document.getElementById('visitorName').value.trim();
     const body  = bodyField.value.trim();
-    const token = typeof hcaptcha !== 'undefined' ? hcaptcha.getResponse() : '';
-
-    if (!name)          { showError('name-error',    'Please enter your name.');                    valid = false; }
-    if (!body)          { showError('body-error',    'Please write a message.');                    valid = false; }
-    else if (body.length < 10) { showError('body-error', 'Message must be at least 10 characters.'); valid = false; }
-    if (!token)         { showError('captcha-error', 'Please complete the captcha.');               valid = false; }
-
-    return valid ? { name, body, token } : null;
+    
+    return valid ? { name, body } : null;
   }
 
   // ── Media upload ───────────────────────────────────────────
@@ -282,7 +267,6 @@ const HCAPTCHA_SITE_KEY = import.meta.env.PUBLIC_HCAPTCHA_SITE_KEY;
       submitBtn.disabled       = false;
       btnLabel.textContent     = 'Send message';
       btnSpinner.hidden        = true;
-      if (typeof hcaptcha !== 'undefined') hcaptcha.reset();
     }
   });
 </script>
