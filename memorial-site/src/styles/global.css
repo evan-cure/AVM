@@ -98,10 +98,13 @@ img.main-icon {
 .messages-section,
 .admin-section {
 	padding: 1rem 0;
+	text-align: center;
 }
 
 .submit-inner {
 	max-width: 620px;
+	margin: 0 auto;
+	text-align: center;
 }
 
 .submit-header,
@@ -301,6 +304,7 @@ img.main-icon {
 	margin-left: calc(50% - 50vw);
 	padding: 1rem max(1rem, calc((100vw - var(--page-width)) / 2)) 3rem;
 	padding-top: 0;
+	text-align: center;
 }
 
 .messages-header .section-title {
